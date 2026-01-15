@@ -732,6 +732,71 @@ function addMessage(text, sender, isHTML = false, agent = '') {
         }
     }
 
+    // --- SPEECH SYNTHESIS (Multilingual Architecture) ---
+    let availableVoices = [];
+
+    function funcInitVoice() {
+        availableVoices = window.speechSynthesis.getVoices();
+        console.log(`Loaded ${availableVoices.length} voices.`);
+    }
+
+    window.speechSynthesis.onvoiceschanged = funcInitVoice;
+
+    // Language Detectors (Script based)
+    const isBengali = (text) => /[\u0980-\u09FF]/.test(text);
+    const isDevanagari = (text) => /[\u0900-\u097F]/.test(text); // Hindi, Marathi, etc.
+
+    function getBestVoice(text) {
+        if (!availableVoices.length) funcInitVoice();
+
+        let targetLang = 'en-US';
+        let preferredVoice = null;
+
+        if (isBengali(text)) {
+            targetLang = 'bn-IN';
+            // Try to find a Bengali specific voice (e.g., Google Bangla)
+            preferredVoice = availableVoices.find(v => v.lang.includes('bn') || v.name.toLowerCase().includes('bangla'));
+        } else if (isDevanagari(text)) {
+            targetLang = 'hi-IN';
+            // Try to find Hindi specific voice (e.g., Google Hindi)
+            preferredVoice = availableVoices.find(v => v.lang.includes('hi') || v.name.toLowerCase().includes('hindi'));
+        } else {
+            // English (Default to Male preference as requested)
+            preferredVoice = availableVoices.find(v => v.name.includes("Google UK English Male")) ||
+                availableVoices.find(v => v.name.includes("Male")) ||
+                availableVoices.find(v => v.lang === "en-US");
+        }
+
+        return { voice: preferredVoice, lang: targetLang };
+    }
+
+    function speakText(text) {
+        if (isMuted) return;
+        window.speechSynthesis.cancel();
+
+        // Clean text (remove markdown like **, ##)
+        const cleanText = text.replace(/[*#]/g, '');
+
+        // Split long text
+        const sentences = cleanText.match(/[^\.!\?]+[\.!\?]+/g) || [cleanText];
+
+        sentences.forEach((sentence, index) => {
+            const utterance = new SpeechSynthesisUtterance(sentence.trim());
+            const { voice, lang } = getBestVoice(sentence);
+
+            if (voice) utterance.voice = voice;
+            utterance.lang = lang; // Critical for correct phonemes
+
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+
+            if (index < sentences.length - 1) {
+                utterance.onend = () => { new Promise(r => setTimeout(r, 200)); };
+            }
+
+            window.speechSynthesis.speak(utterance);
+        });
+    }
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(content);
     chatContainer.appendChild(msgDiv);
