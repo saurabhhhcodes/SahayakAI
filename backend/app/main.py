@@ -263,4 +263,3 @@ async def root_redirect():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
-```
