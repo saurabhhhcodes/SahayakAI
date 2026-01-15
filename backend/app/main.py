@@ -256,6 +256,11 @@ async def download_ppt(request: PPTRequest):
          print(f"PPTX Creation Error: {e}")
          return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/app/")
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+```

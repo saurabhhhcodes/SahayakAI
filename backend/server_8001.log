@@ -13,3 +13,8 @@ INFO:     127.0.0.1:54668 - "POST /chat HTTP/1.1" 200 OK
 INFO:     127.0.0.1:54680 - "POST /chat HTTP/1.1" 200 OK
 INFO:     127.0.0.1:35568 - "POST /chat HTTP/1.1" 200 OK
 INFO:     127.0.0.1:36206 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44888 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44888 - "GET /generate/image?prompt=a%20deer%20in%20a%20forest%20with%20a%20sunny%20background HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34602 - "GET /app/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34602 - "GET /app/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34602 - "GET /app/app.js HTTP/1.1" 200 OK
