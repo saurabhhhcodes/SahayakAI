@@ -103,25 +103,32 @@ async def chat_handler(request: QueryRequest):
         # Construct Messages
         messages = [{"role": "system", "content": MASTER_PROMPT}] + history
         
-        # HYBRID MODE: No response_format forced. We parse the result.
-        completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages
-        )
+        # 1. Try Primary Model (High Intelligence)
+        try:
+            completion = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages
+            )
+        except Exception as e:
+            # 2. Fallback to Faster/Smaller Model (Higher limits)
+            print(f"Primary Model Failed ({e}). Switching to Fallback.")
+            completion = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages
+            )
+
         content_str = completion.choices[0].message.content
         
-        # 1. Try JSON Parse (Tool Usage)
+        # 3. Try JSON Parse
         try:
-            # Helper to find JSON substring if mixed content
-            # (Simple heuristic: if it looks like JSON start/end)
-            response_data = json.loads(content_str)
-            
-            # Allow pure text response to be treated as text
-            if "tool_used" not in response_data:
-                 raise ValueError("Not a tool response")
-                 
-        except Exception:
-            # 2. Fallback to TEXT (Conversation)
+            if "tool_used" in content_str and "{" in content_str:
+                 # Clean potential markdown wrapping
+                 clean_json = content_str.replace("```json", "").replace("```", "").strip()
+                 response_data = json.loads(clean_json)
+            else:
+                 raise ValueError("Text content")
+        except:
+            # Text Conversation
             response_data = {
                 "tool_used": "text",
                 "data": content_str,
@@ -135,8 +142,12 @@ async def chat_handler(request: QueryRequest):
         return response_data
 
     except Exception as e:
-        print(f"Groq Error: {e}")
-        return {"tool_used": "text", "data": f"Error: {str(e)}", "metadata": {}}
+        print(f"Groq Critical Error: {e}")
+        return {
+            "tool_used": "text", 
+            "data": "I am currently at maximum capacity (Rate Limit). Please try again in 1 minute.", 
+            "metadata": {}
+        }
 
 # --- MEDIA ENDPOINTS ---
 

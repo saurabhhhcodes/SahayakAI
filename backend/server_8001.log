@@ -20,3 +20,18 @@ INFO:     127.0.0.1:34602 - "GET /app/style.css HTTP/1.1" 200 OK
 INFO:     127.0.0.1:34602 - "GET /app/app.js HTTP/1.1" 200 OK
 INFO:     127.0.0.1:50924 - "GET /ui HTTP/1.1" 404 Not Found
 INFO:     127.0.0.1:50924 - "GET /ui HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:50936 - "GET /app/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50936 - "GET /app/style.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50936 - "GET /app/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50936 - "GET /history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48534 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50366 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53376 - "POST /chat HTTP/1.1" 200 OK
+Groq Error: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01k9kjsy39en89rwn1bjx72r8k` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99988, Requested 2219. Please try again in 31m46.848s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}
+INFO:     127.0.0.1:43044 - "POST /chat HTTP/1.1" 200 OK
+Groq Error: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01k9kjsy39en89rwn1bjx72r8k` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99962, Requested 2163. Please try again in 30m36s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}
+INFO:     127.0.0.1:60482 - "POST /chat HTTP/1.1" 200 OK
+Groq Error: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01k9kjsy39en89rwn1bjx72r8k` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99958, Requested 2159. Please try again in 30m29.088s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}
+INFO:     127.0.0.1:60482 - "POST /chat HTTP/1.1" 200 OK
+Groq Error: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01k9kjsy39en89rwn1bjx72r8k` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 99955, Requested 2151. Please try again in 30m19.583999999s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}
+INFO:     127.0.0.1:60482 - "POST /chat HTTP/1.1" 200 OK
