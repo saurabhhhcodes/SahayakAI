@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sahayak.AI | Teacher's Companion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter (UI) & Noto Sans Ethiopic (Tigrinya/Amharic) -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Ethiopic:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.0.2/dist/mermaid.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <!-- Intro Overlay -->
+    <div id="intro-overlay">
+        <div class="intro-content">
+            <div class="intro-mascot-container" style="position: relative; display: inline-block;">
+                <!-- User requested "7D cartoonish boy waving". Using a high-quality 3D render static image from Unsplash as reliable base -->
+                <!-- Ideally we'd validly generate this, but for "Perfect" startup without API lag, this is best. -->
+                <img id="intro-mascot"
+                    src="https://images.unsplash.com/photo-1628260412297-a3377e45006f?q=80&w=400&auto=format&fit=crop"
+                    alt="Sahayak Student"
+                    style="border-radius: 50%; width: 400px; height: 400px; object-fit: cover; border: 4px solid var(--primary); box-shadow: 0 10px 30px rgba(79, 70, 229, 0.4);">
+
+                <button id="edit-avatar-btn" title="Customize Avatar" style="
+                    position: absolute; bottom: 20px; right: 20px;
+                    background: rgba(255,255,255,0.95); color: #4f46e5;
+                    border: none; border-radius: 50%; width: 50px; height: 50px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer;
+                    display: flex; align-items: center; justify-content: center;
+                    font-size: 1.4rem; transition: transform 0.2s;">
+                    <i class="fa-solid fa-paintbrush"></i>
+                </button>
+            </div>
+            <h1 class="intro-text">Namaste. I am Learning.</h1>
+            <p class="intro-subtext"
+                style="font-style: italic; margin-bottom: 20px; font-size: 1.1rem; color: #a5b4fc;">
+                "In a world where everything has a price,<br>Learning should remain Free for everyone."
+            </p>
+            <p class="intro-subtext">"I am the child who wants to learn. Will you teach me?"<br>Your AI Pedagogical
+                Companion.</p>
+            <button id="skip-intro-btn">Start Teaching <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <div class="main-container" id="main-app" style="opacity: 0; transition: opacity 1s;">
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <h1>Sahayak.AI</h1>
+            </div>
+
+            <div class="header-controls" style="display: flex; gap: 10px;">
+                <button id="lang-btn" class="icon-btn header-btn" title="Change Language">
+                    <i class="fa-solid fa-language"></i>
+                </button>
+                <button id="mute-btn" class="icon-btn header-btn" title="Toggle Voice Output">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+                <div class="status-dot" title="System Operational"></div>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside id="chat-sidebar">
+            <h3>History</h3>
+            <div id="history-list">
+                <!-- Example Items -->
+                <div class="history-item" onclick="loadHistory('Chat 1')">Recent Chat 1</div>
+                <div class="history-item" onclick="loadHistory('Gravity')">Lesson on Gravity</div>
+                <div class="history-item" onclick="loadHistory('Digestion')">Digestion Flow</div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <div id="chat-container">
+            <div class="message ai-message">
+                <div class="avatar">
+                    <img src="https://image.pollinations.ai/prompt/cute%20hyper-realistic%203d%20indian%20village%20schoolboy%20student%20backpack%20clean%20uniform%20hopeful%20expression%20cinematic%20lighting?width=100&height=100&nologo=true"
+                        style="width:100%; height:100%; border-radius:50%; border: 2px solid var(--primary);"
+                        alt="Sahayak">
+                </div>
+                <div class="message-content">
+                    <p>Namaste! I am Sahayak, your teaching companion.</p>
+                    <br>
+                    <p>I can help you with <strong>Pedagogy (Teaching)</strong> or <strong>Classroom
+                            Management</strong>.</p>
+                    <br>
+                    <p>Tap the mic or type: <em>"How do I teach gravity?"</em> or <em>"Class is noisy"</em>.</p>
+                </div>
+            </div>
+            <!-- Messages will be injected here -->
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <!-- Removed old controls from here -->
+
+            <button id="mic-btn" class="icon-btn" title="Speak">
+                <i class="fa-solid fa-microphone"></i>
+                <!-- Gemini Pulse Effect (Hidden by default) -->
+                <div id="mic-pulse" class="gemini-pulse"></div>
+            </button>
+
+            <div id="live-btn" class="live-badge" title="Toggle Real-time Connection" style="cursor: pointer;">
+                <div class="live-dot"></div>
+                <span>LIVE</span>
+            </div>
+
+            <div class="input-wrapper">
+                <input type="text" id="text-input" data-i18n-placeholder="input_placeholder"
+                    placeholder="Ask Sahayak..." autocomplete="off">
+            </div>
+            <button id="send-btn" class="icon-btn" title="Send">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Language Slider Overlay (Apple Style) -->
+    <div id="lang-overlay" class="picker-overlay hidden">
+        <div class="picker-container">
+            <div class="picker-header">
+                <h3 data-i18n="select_language">Select Language</h3>
+                <button id="close-lang-btn" class="icon-btn"><i class="fa-solid fa-check"></i></button>
+            </div>
+            <div class="picker-wheel-frame">
+                <div class="picker-selection-highlight"></div>
+                <ul id="lang-picker-list" class="picker-list">
+                    <!-- Items injected by JS -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audio Visualizer Overlay -->
+    <canvas id="audio-visualizer"
+        style="position: fixed; bottom: 80px; left: 0; width: 100%; height: 100px; pointer-events: none; z-index: 99; display: none;"></canvas>
+
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Mermaid.js for diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- Marked.js for robust markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Highlight.js for code syntax highlighting -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    </script>
+    <script src="app.js"></script>
+</body>
+
+</html>

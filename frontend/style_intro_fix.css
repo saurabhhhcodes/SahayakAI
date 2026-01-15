@@ -1,0 +1,52 @@
+/* CRITICAL: Force Hide Intro Overlay */
+#intro-overlay {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: -9999 !important;
+}
+
+#main-app {
+    opacity: 1 !important;
+    display: block !important;
+}
+
+:root {
+    --primary: #4f46e5;
+    --primary-dark: #4338ca;
+    --secondary: #ec4899;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --text: #1e293b;
+    --text-light: #64748b;
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', 'Noto Sans Ethiopic', sans-serif;
+}
+
+body {
+    font-family: 'Inter', 'Noto Sans Ethiopic', sans-serif;
+    background-color: #f8fafc;
+    color: var(--text);
+    line-height: 1.6;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* Main Layout Grid */
+.main-container {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    grid-template-rows: 60px 1fr 80px;
+    height: 100vh;
+    max-width: 1600px;
+    margin: 0 auto;
+    background: var(--surface);
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+}

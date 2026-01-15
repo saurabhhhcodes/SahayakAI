@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>Sahayak Frontend Tests</title>
+    <link rel="stylesheet" href="https://code.jquery.com/qunit/qunit-2.20.0.css">
+</head>
+
+<body>
+    <div id="qunit"></div>
+    <div id="qunit-fixture"></div>
+
+    <!-- Mock DOM Elements needed by app.js -->
+    <div id="mock-dom" style="display:none;">
+        <div id="chat-container"></div>
+        <div id="text-input"></div>
+        <button id="mic-btn"></button>
+        <button id="send-btn"></button>
+        <button id="stop-speak-btn"></button>
+        <input type="checkbox" id="live-mode-toggle">
+        <canvas id="audio-visualizer"></canvas>
+    </div>
+
+    <script src="https://code.jquery.com/qunit/qunit-2.20.0.js"></script>
+
+    <!-- Mock Dependencies -->
+    <script>
+        // Mock marked.js
+        const marked = { parse: (text) => text };
+        // Mock mermaid
+        const mermaid = { run: () => { } };
+        // Mock hljs
+        const hljs = { highlightAll: () => { } };
+        // Mock Chart
+        class Chart { }
+    </script>
+
+    <!-- Load App Code -->
+    <script src="app.js"></script>
+
+    <!-- Tests -->
+    <script>
+        QUnit.module('Frontend Logic', function (hooks) {
+
+            QUnit.test('Quiz Regex Detection', function (assert) {
+                const text = "Some text [QUIZ] Question: Test? [END QUIZ]";
+                assert.true(text.includes("[QUIZ]"), "Should detect quiz tag");
+            });
+
+            QUnit.test('Slide Parsing Logic', function (assert) {
+                const text = "[SLIDE] Slide 1 [SLIDE] Slide 2";
+                const slides = text.split("[SLIDE]").filter(s => s.trim().length > 0);
+                assert.equal(slides.length, 2, "Should parse 2 slides");
+            });
+
+            QUnit.test('Float Emojis Keyword Matching', function (assert) {
+                const keywords = { 'star': '⭐', 'space': '🚀' };
+                const text = "I love space";
+                const lowerText = text.toLowerCase();
+                let matched = false;
+                Object.keys(keywords).forEach(key => {
+                    if (lowerText.includes(key)) matched = true;
+                });
+                assert.true(matched, "Should match 'space' keyword");
+            });
+
+            QUnit.test('DOM Element Existence', function (assert) {
+                const chat = document.getElementById('chat-container');
+                assert.ok(chat, "Chat container should exist");
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,15 @@
+nohup: ignoring input
+INFO:     Started server process [147574]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+Video: ModelScope Client Init Failed. Using Fallback.
+INFO:     127.0.0.1:54668 - "GET /app/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54668 - "GET /app/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54668 - "GET /app/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54668 - "GET /history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54668 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54668 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54680 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35568 - "POST /chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36206 - "POST /chat HTTP/1.1" 200 OK
