@@ -143,9 +143,10 @@ async def chat_handler(request: QueryRequest):
 
     except Exception as e:
         print(f"Groq Critical Error: {e}")
+        # Final Fallback: Mock Mode (When API is totally dead)
         return {
             "tool_used": "text", 
-            "data": "I am currently at maximum capacity (Rate Limit). Please try again in 1 minute.", 
+            "data": "⚠️ **System Alert**: My daily AI fuel (API Limit) is exhausted. I cannot think right now.\n\nPlease update the `GROQ_API_KEY` in your Render settings with a fresh key (it's free!).", 
             "metadata": {}
         }
 
