@@ -124,26 +124,25 @@ async def chat_handler(request: QueryRequest):
     history = SESSION_STORE[user_id][-10:]
 
     try:
-        # Construct Messages
-        messages = [{"role": "system", "content": MASTER_PROMPT}] + history
+        # --- MULTI-LLM FALLBACK SYSTEM ---
+        # Uses LiteLLM to cycle through providers when rate limited
+        from app.llm_factory import llm_factory
         
-        # 1. Try Primary Model (High Intelligence)
-        try:
-            completion = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages
-            )
-        except Exception as e:
-            # 2. Fallback to Faster/Smaller Model (Higher limits)
-            print(f"Primary Model Failed ({e}). Switching to Fallback.")
-            completion = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=messages
-            )
-
-        content_str = completion.choices[0].message.content
+        llm_response = llm_factory.chat(
+            messages=history,
+            system_prompt=MASTER_PROMPT
+        )
         
-        content_str = completion.choices[0].message.content
+        if not llm_response.get("success", False):
+            # All providers failed - return error message
+            return {
+                "tool_used": "text",
+                "data": llm_response["content"],
+                "metadata": {"model_used": "none"}
+            }
+        
+        content_str = llm_response["content"]
+        model_used = llm_response.get("model_used", "unknown")
         # 3. Robust JSON Parsing (Handles "Here is the JSON: {...}")
         import re
         try:

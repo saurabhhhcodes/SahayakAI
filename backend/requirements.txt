@@ -20,3 +20,4 @@ moviepy
 gradio_client
 python-pptx
 youtube-search-python
+litellm
