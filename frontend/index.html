@@ -68,6 +68,9 @@
                 </button>
                 <div class="status-dot" title="System Operational"></div>
             </div>
+
+            <!-- Hackathon Theme Controls Moved to Input Area -->
+
         </header>
 
         <!-- Sidebar -->
@@ -103,7 +106,26 @@
 
         <!-- Input Area -->
         <div class="input-area">
-            <!-- Removed old controls from here -->
+            <!-- Quick Actions (Chiplist Style) -->
+            <div class="quick-actions-chips"
+                style="display: flex; gap: 10px; margin-bottom: 15px; width: 100%; justify-content: center;">
+                <button id="sos-btn" class="chip-btn" onclick="window.handleQuickAction('sos')"
+                    style="background: #fee2e2; color: #ef4444; border: 1px solid #ef4444;">
+                    <i class="fa-solid fa-bell-concierge"></i> SOS
+                </button>
+                <button id="plan-btn" class="chip-btn" onclick="window.handleQuickAction('plan')"
+                    style="background: #e0e7ff; color: #4f46e5; border: 1px solid #6366f1;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Plan
+                </button>
+                <button id="train-btn" class="chip-btn" onclick="window.handleQuickAction('train')"
+                    style="background: #dcfce7; color: #166534; border: 1px solid #22c55e;">
+                    <i class="fa-solid fa-chalkboard-user"></i> Train
+                </button>
+                <button id="design-btn" class="chip-btn" onclick="window.handleQuickAction('design')"
+                    style="background: #fae8ff; color: #86198f; border: 1px solid #d946ef;">
+                    <i class="fa-solid fa-hat-wizard"></i> Design
+                </button>
+            </div>
 
             <button id="mic-btn" class="icon-btn" title="Speak">
                 <i class="fa-solid fa-microphone"></i>
@@ -146,10 +168,25 @@
     <canvas id="audio-visualizer"
         style="position: fixed; bottom: 80px; left: 0; width: 100%; height: 100px; pointer-events: none; z-index: 99; display: none;"></canvas>
 
+    <!-- GEMINI STYLE PULSE OVERLAY (Central Heartbeat) -->
+    <div id="live-pulse-overlay" style="display: none;">
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-core">
+            <i class="fa-solid fa-microphone"></i>
+        </div>
+        <div class="pulse-text">Listening...</div>
+    </div>
+
     <!-- Chart.js for visualizations -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Mermaid.js for diagrams -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- KaTeX for Math Rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
     <!-- Marked.js for robust markdown parsing -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
@@ -161,6 +198,17 @@
     <script>
         // Initialize Mermaid
         mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+        // Initialize KaTeX
+        document.addEventListener("DOMContentLoaded", function () {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false }
+                ],
+                throwOnError: false
+            });
+        });
     </script>
     <script src="app.js"></script>
 </body>

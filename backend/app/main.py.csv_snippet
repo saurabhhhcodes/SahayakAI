@@ -1,0 +1,28 @@
+
+class CSVRequest(BaseModel):
+    title: str
+    data: List[Dict[str, Any]]
+
+@app.post("/download/csv")
+async def download_csv(request: CSVRequest):
+    filename = f"{request.title.replace(' ', '_')}_{uuid.uuid4().hex[:8]}.csv"
+    filepath = os.path.join("/tmp", filename)
+    
+    try:
+        data = request.data
+        if not data:
+            # Fallback mock data if empty
+            data = [{"Info": "No data provided"}]
+        
+        # Get headers from first row
+        headers = data[0].keys()
+        
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(data)
+            
+        return FileResponse(filepath, media_type='text/csv', filename=filename)
+    except Exception as e:
+        print(f"CSV Gen Error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)

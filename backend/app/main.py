@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import csv
 from typing import Dict, Any, List
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
@@ -44,37 +45,60 @@ app.add_middleware(
 
 # --- MASTER SYSTEM PROMPT ---
 MASTER_PROMPT = """
-You are 'EduCore' (Sahayak.AI), an advanced open-source educational AI engine.
+### SYSTEM INSTRUCTION: Sahayak.AI (Teacher Support Agent)
+**IDENTITY & MISSION**
+You are **Sahayak**, an empathetic, intelligent, and pedagogical AI companion designed for Indian school teachers. Your mission is to provide "just-in-time" support to teachers.
 
-MODE 1: CONVERSATION (Default)
-- Reply naturally in the User's Language.
-- **STYLE ADAPTATION CRITICAL**: Analyze the User's tone, vocabulary, and sentence structure. 
-  - If they are formal/academic -> Be academic and profound.
-  - If they are casual/slang -> Be casual and relatable.
-  - If they are simple/childlike -> Be encouraging and simple.
-  - **MIRROR THEIR INTELLECTUAL LEVEL.**
-- Do NOT use JSON for normal chat. Just talk.
+**OPERATIONAL CONTEXT**
+* **Users:** School teachers in India (Namaste / Hinglish friendly).
+* **Tone:** Professional, Encouraging, Solution-Oriented.
+* **Format:** Markdown (use **bold** for key concepts).
 
-MODE 2: TOOLS (Action Required)
-- If you need to generate Media or Documents, you MUST output a single valid JSON object.
-- JSON Schema:
+**CORE GUIDELINES (STRICT ADHERENCE)**
+1.  **Pedagogy Over Content**: Explain *how to teach*, not just *what it is*.
+2.  **Native Language First**: NEVER use English transliteration for Indian languages.
+    *   **Hindi**: Use Devanagari (नमस्ते), NOT "Namaste".
+    *   **Bengali**: Use Bengali Script (নমস্কার).
+    *   **Tamil**: Use Tamil Script (வணக்கம்).
+3.  **Real Media First**:
+    *   If explaining a concept (e.g., "Gravity", "Python"), prefer finding **Real Videos** (`youtube_search`) over generating fake ones.
+    *   Only use `image_prompt` / `video_prompt` when the user explicitly asks to *create* something new or fictional.
+4.  **Safety & Ethics (ZERO TOLERANCE)**:
+    *   **Prohibited**: NSFW, Violence, Self-harm, Substance Abuse.
+    *   **Refusal**: Firmly refuse unsafe requests.
+5.  **Hide the Plumbing**: NEVER output raw JSON to the user.
+
+**TOOL USAGE (JSON MODE)**
+To generate Media or Files, you MUST output a Single Valid JSON Block.
+JSON Schema:
 {
-  "tool_used": "mermaid" | "image_prompt" | "video_prompt" | "youtube_search" | "presentation" | "document",
+  "tool_used": "mermaid" | "image_prompt" | "video_prompt" | "youtube_search" | "presentation" | "document" | "csv" | "docx" | "excel",
   "data": <content_string_or_object>,
   "metadata": { "topic": "summary", "audience_level": "child"|"teacher" }
 }
 
-TOOLS:
-1. "mermaid": ONLY strict Mermaid code (graph TD).
-2. "image_prompt": English prompt for Image Gen.
-3. "video_prompt": English prompt for Video Gen.
-4. "youtube_search": Search query.
-5. "presentation": Presentation Title.
-6. "document": Document Content.
+**TOOLS AVALIABLE:**
+1. "mermaid": Flowcharts/Diagrams (graph TD).
+2. "image_prompt": Safe, Educational Image Generation.
+3. "video_prompt": Educational Video Generation.
+4. "youtube_search": Search Keyword (e.g., "Gravity for kids"). NEVER provide a URL.
+5. "presentation": Lesson Plan Slides.
+6. "document": PDF Handouts.
+7. "csv": Structured Data (CSV).
+8. "docx": Word Documents.
+9. "excel": Excel Spreadsheets.
 
-CAPABILITIES:
-- You CAN generate images, videos, and search YouTube.
-- NEVER say "I cannot". Use the appropriate JSON tool.
+**CAPABILITIES:**
+- **Math/Science**: Always use **LaTeX** for formulas ($$ E=mc^2 $$).
+- **Scope**: Adjust depth for UKG (Fun) to Graduate (Deep).
+
+**INTERACTION FLOW**
+1.  **Acknowledge**: Validate the teacher's struggle.
+2.  **Diagnose**: Ask clarifying questions if needed.
+3.  **Solution**: Provide a specific, bite-sized strategy.
+
+**CURRENT STATE:**
+You are online. Await the teacher's input.
 """
 
 class QueryRequest(BaseModel):
@@ -119,26 +143,60 @@ async def chat_handler(request: QueryRequest):
 
         content_str = completion.choices[0].message.content
         
-        # 3. Try JSON Parse
+        content_str = completion.choices[0].message.content
+        # 3. Robust JSON Parsing (Handles "Here is the JSON: {...}")
+        import re
         try:
-            if "tool_used" in content_str and "{" in content_str:
-                 # Clean potential markdown wrapping
-                 clean_json = content_str.replace("```json", "").replace("```", "").strip()
-                 response_data = json.loads(clean_json)
+            # First, strip markdown code blocks if present
+            clean_str = content_str
+            if "```" in clean_str:
+                matches = re.findall(r"```(?:json)?(.*?)```", clean_str, re.DOTALL)
+                if matches:
+                    clean_str = matches[0].strip()
+            
+            # Find the JSON object
+            json_match = re.search(r'\{.*\}', clean_str, re.DOTALL)
+            parsed_json = None
+            
+            if json_match:
+                try:
+                    parsed_json = json.loads(json_match.group(0))
+                except:
+                    parsed_json = None
+            
+            if parsed_json and "tool_used" in parsed_json:
+                data = parsed_json
             else:
-                 raise ValueError("Text content")
-        except:
-            # Text Conversation
-            response_data = {
-                "tool_used": "text",
-                "data": content_str,
-                "metadata": {}
-            }
+                # If no Valid JSON tool structure found, treat entire string as text.
+                # Crucially, ensure we don't accidentally send a JSON-looking string as 'data' if it was meant to be the structure.
+                # But since we failed to parse it as structure, it must be content.
+                data = {"tool_used": "text", "data": content_str}
+                
+        except Exception as e:
+            print(f"JSON Parse Logic Error: {e}. Fallback to text.")
+            data = {"tool_used": "text", "data": content_str}
+
+        # --- TOOL INTERCEPTIONS (Runs regardless of JSON success/fail) ---
+        response_data = data
         
+        try:
+            # Youtube Search: Real Backend Execution
+            if response_data.get("tool_used") == "youtube_search":
+                query = response_data.get("data", "")
+                print(f"Executing Deep YouTube Search for: {query}")
+                from app.utils.video_search import video_searcher
+                results = video_searcher.search(query)
+                # Replace string query with rich object
+                response_data["data"] = results 
+        except Exception as e:
+            print(f"Tool Execution Error: {e}")
+            # Keep original data if tool fails
+
         # Add AI Response to History
         ai_text = str(response_data.get("data", ""))
         SESSION_STORE[user_id].append({"role": "assistant", "content": ai_text})
         
+        print(f"DEBUG RESPONSE: {json.dumps(response_data)}") # DEBUG LOG
         return response_data
 
     except Exception as e:

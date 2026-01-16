@@ -51,13 +51,24 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
     recognition.onend = () => {
         isRecording = false;
         micBtn.classList.remove('recording');
-        micPulse.classList.remove('active'); // Pulse off
-        micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
-        micBtn.appendChild(micPulse); // Re-append pulse div
+        const overlay = document.getElementById('live-pulse-overlay');
 
-        // Auto-restart if Live Mode is active
+        // PREVENT SELF-LOOP: Do not auto-restart if AI is currently speaking
+        // The restart will be handled by utterance.onend in speakText()
+        if (window.speechSynthesis.speaking) {
+            if (overlay) overlay.style.display = 'none'; // Hide overlay while AI speaks
+            return;
+        }
+
+        // Auto-restart if Live Mode is active and AI is NOT speaking
         if (isLiveMode) {
             startRecording();
+        } else {
+            // Turn off if not Key Lve Mode
+            if (overlay) overlay.style.display = 'none';
+            micPulse.classList.remove('active');
+            micBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+            micBtn.appendChild(micPulse);
         }
     };
 };
@@ -65,6 +76,8 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
 function startRecording() {
     if (!recognition || isRecording) return;
     try {
+        const overlay = document.getElementById('live-pulse-overlay');
+        if (overlay) overlay.style.display = 'flex';
         recognition.start();
     } catch (e) {
         console.error("Start Recording Error:", e);
@@ -116,10 +129,12 @@ function speakText(text) {
     utterance.onend = () => {
         micBtn.classList.remove('disabled-while-speaking');
         // Resume listening ONLY if:
-        // 1. Live Mode is active 
-        // 2. The user didn't manually stop it (hard to track, but Live Mode implies continuous)
+        // 1. Live Mode is active
         if (isLiveMode) {
-            setTimeout(() => startRecording(), 300); // Small delay to avoid picking up echo
+            // Add a slight delay to ensure the speaker has physically stopped vibrating/echoing
+            setTimeout(() => {
+                if (!isRecording) startRecording();
+            }, 300);
         }
     };
 
@@ -344,6 +359,34 @@ if (muteBtn) {
     });
 }
 
+// --- HACKATHON: Quick Actions ---
+// --- HACKATHON: Quick Actions Global Handler ---
+window.handleQuickAction = function (action) {
+    console.log("Quick Action Triggered:", action);
+
+    // Visual Feedback
+    const btn = document.getElementById(action + '-btn');
+    if (btn) {
+        const originalTransform = btn.style.transform;
+        btn.style.transform = "scale(0.95)";
+        setTimeout(() => btn.style.transform = originalTransform || "scale(1)", 150);
+    }
+
+    if (action === 'sos') {
+        sendMessage("🚨 EMERGENCY: My class is chaotic and noisy. Give me a 30-second attention-grabbing strategy immediately. No lecture, just action.");
+    } else if (action === 'plan') {
+        sendMessage("I need to create a Lesson Plan. Please ask me for the Topic and Grade level.");
+    } else if (action === 'train') {
+        sendMessage("I want to upskill myself. Generate a 5-minute Micro-Training Module for me. Please ask me for the specific Pedagogical Topic.");
+    } else if (action === 'design') {
+        sendMessage("I am an NGO Leader. I want to design an Educational Intervention Program. Start the 'Program Design Wizard' and guide me step-by-step (Problem -> Solution -> Outcome).");
+    }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Legacy listeners removed in favor of inline onclicks for reliability
+});
+
 // Load voices (sometimes checking immediately yields empty array)
 window.speechSynthesis.onvoiceschanged = () => {
     // Just force a reload of voices
@@ -410,6 +453,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-Focus
     if (textInput) textInput.focus();
+
+    // Mute Button Logic
+    const muteBtn = document.getElementById('mute-btn');
+    if (muteBtn) {
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            const icon = muteBtn.querySelector('i');
+            if (isMuted) {
+                icon.className = 'fa-solid fa-volume-xmark';
+                window.speechSynthesis.cancel();
+            } else {
+                icon.className = 'fa-solid fa-volume-high';
+                // Optional: Speak status
+                // speakText("Voice enabled");
+            }
+        });
+    }
 });
 
 sendBtn.addEventListener('click', sendMessage);
@@ -417,12 +477,13 @@ textInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
 
-async function sendMessage() {
-    const text = textInput.value.trim();
+async function sendMessage(textOverride) {
+    // Priority: Argument -> Input Value -> Return
+    const text = textOverride || textInput.value.trim();
     if (!text) return;
 
     addMessage(text, 'user');
-    textInput.value = '';
+    textInput.value = ''; // Clear input even if we came from button
     const loadingId = addLoadingIndicator();
 
     try {
@@ -436,34 +497,91 @@ async function sendMessage() {
         removeMessage(loadingId);
 
         // --- GROQ JSON HANDLER ---
-        const tool = data.tool_used || 'text'; // Fallback
-        const content = data.data;
-        const metadata = data.metadata || {};
-        const agentName = (metadata.audience_level === 'teacher') ? 'Pedagogy' : 'Sahayak';
+        let tool = data.tool_used || 'text';
+        let content = data.data;
+        let metadata = data.metadata || {};
 
+        // RECURSIVE JSON CHECK: Sometimes LLM puts JSON *inside* the data string
+        if (typeof content === 'string' && content.trim().startsWith('{') && content.includes('"tool_used"')) {
+            try {
+                const nested = JSON.parse(content);
+                if (nested.tool_used && nested.data) {
+                    console.log("Found nested JSON, unwrapping...");
+                    tool = nested.tool_used;
+                    content = nested.data;
+                    metadata = nested.metadata || metadata;
+                }
+            } catch (e) {
+                // Not valid JSON, ignore
+            }
+        }
+
+        const agentName = (metadata.audience_level === 'teacher') ? 'Pedagogy' : 'Sahayak';
         let displayHTML = "";
 
         if (tool === 'text') {
-            displayHTML = content; // Will be marked-parsed in addMessage
+            displayHTML = content;
         }
         else if (tool === 'mermaid') {
             displayHTML = `<div class="mermaid">${content}</div>`;
         }
+        else if (tool === 'youtube_search') {
+            const results = Array.isArray(content) ? content : [];
+            let galleryHTML = `<div class="video-gallery">`;
+            if (results.length === 0) galleryHTML += `No videos found for: ${content}`;
+
+            results.forEach(vid => {
+                const thumb = vid.thumbnail || "https://img.youtube.com/vi/default.jpg";
+                galleryHTML += `
+                <div class="video-card" onclick="window.open('${vid.link}', '_blank')">
+                    <div class="video-thumb">
+                        <img src="${thumb}">
+                        <div class="video-duration">${vid.duration || 'VIDEO'}</div>
+                    </div>
+                    <div class="video-info">
+                        <div class="video-title" title="${vid.title}">${vid.title}</div>
+                        <div class="video-channel">${vid.channel || 'YouTube'}</div>
+                    </div>
+                </div>`;
+            });
+            galleryHTML += `</div>`;
+            displayHTML = galleryHTML;
+        }
         else if (tool === 'image_prompt') {
             displayHTML = `**Generating Image...**\n*${content}*`;
-            // Trigger Client-Side Image Gen
             fetchAndAppendImage(content);
         }
-        else if (tool === 'presentation') {
-            // data is slides array.
-            // We'll store it in a way the button can access, or just pass title.
-            // For this Hackathon Demo, "Title" is enough to generate a mock/real file.
-            const title = metadata.topic || "Lesson";
-            displayHTML = `**Presentation Ready: ${title}**\n[DOWNLOAD_PPT: ${title}]`;
-        }
         else if (tool === 'document') {
-            const title = metadata.topic || "Document";
-            displayHTML = `**Document Ready: ${title}**\n[DOWNLOAD_PDF: ${title}]`;
+            // Fix for Leakage: Show a clean Card instead of raw JSON
+            const title = metadata.topic || "Research Document";
+            // We use 'content' as the Summary text if provided, or generic
+            const summary = (content.length > 200) ? "Content generated successfully." : content;
+
+            displayHTML = `
+            <div class="doc-card" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <h4 style="color: #475569; margin: 0 0 10px 0;"><i class="fa-solid fa-file-pdf" style="color: #ef4444;"></i> ${title}</h4>
+                <p style="font-size: 0.9rem; color: #64748b;">${summary}</p>
+                <button class="download-btn" onclick="downloadPDF('${title.replace(/'/g, "\\'")}', \`${content.replace(/`/g, "\\`").replace(/\$/g, "")}\`)" style="margin-top: 10px; padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="fa-solid fa-download"></i> Download Content
+                </button>
+            </div>`;
+        }
+        else if (tool === 'csv') {
+            const title = metadata.topic || "Data";
+            displayHTML = `**CSV Data Ready: ${title}**\n[DOWNLOAD_CSV: ${title}]`;
+        }
+        else if (tool === 'presentation') {
+            const title = metadata.topic || "Presentation";
+            const summary = content.length > 100 ? "Slide deck ready." : content;
+            displayHTML = `
+            <div class="doc-card" style="background: #fff7ed; border: 1px solid #fed7aa; padding: 15px; border-radius: 8px; margin-top: 10px;">
+                <h4 style="color: #9a3412; margin: 0 0 10px 0;"><i class="fa-solid fa-file-powerpoint" style="color: #f97316;"></i> ${title}</h4>
+                <p style="font-size: 0.9rem; color: #9a3412;">${summary}</p>
+                <div style="font-size: 0.8rem; color: #fb923c; margin-bottom: 5px;">(Contains multiple slides)</div>
+                <button class="download-btn" onclick="downloadPDF('${title.replace(/'/g, "\\'")}', \`${content.replace(/`/g, "\\`").replace(/\$/g, "")}\`)" style="margin-top: 10px; padding: 8px 16px; background: #f97316; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <i class="fa-solid fa-download"></i> Download Slides
+                </button>
+            </div>`;
         }
 
         // Render
@@ -471,12 +589,24 @@ async function sendMessage() {
 
         // Speak
         if (tool === 'text') speakText(content);
+        if (tool === 'document') speakText(`I have prepared a document on ${metadata.topic || 'the topic'}.`);
 
     } catch (error) {
         console.error('Error:', error);
         removeMessage(loadingId);
         addMessage("Sorry, I am unable to reach the Brain (Groq). Please check the backend connection.", 'ai');
     }
+}
+
+// Helper: Quick PDF Download (Client-Side)
+function downloadPDF(filename, text) {
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+    element.setAttribute('download', filename + ".txt");
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
 }
 
 // Helper: Fetch Image (Client-Side)
@@ -646,6 +776,17 @@ function addMessage(text, sender, isHTML = false, agent = '') {
                     });
                 }
                 if (typeof hljs !== 'undefined') hljs.highlightAll();
+
+                // 6. Render Math (KaTeX)
+                if (typeof renderMathInElement === 'function') {
+                    renderMathInElement(msgDiv, {
+                        delimiters: [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '$', right: '$', display: false }
+                        ],
+                        throwOnError: false
+                    });
+                }
             }, 100);
         }
 
@@ -772,23 +913,65 @@ function addMessage(text, sender, isHTML = false, agent = '') {
 
     function speakText(text) {
         if (isMuted) return;
-        window.speechSynthesis.cancel();
-
         // Clean text (remove markdown like **, ##)
         const cleanText = text.replace(/[*#]/g, '');
 
         // Split long text
         const sentences = cleanText.match(/[^\.!\?]+[\.!\?]+/g) || [cleanText];
 
+        function selectVoice(utterance, langCode) {
+            const voices = window.speechSynthesis.getVoices();
+            // Priority map for Indian context
+            // Google 'Name' usually contains: "Google Hindi", "Google Bangla", "Rishi", "Sangeeta" (Microsoft)
+
+            let targetLang = 'en-IN'; // Default to Indian English
+            if (langCode === 'hi') targetLang = 'hi-IN';
+            if (langCode === 'bn') targetLang = 'bn-IN';
+            if (langCode === 'ta') targetLang = 'ta-IN';
+            if (langCode === 'te') targetLang = 'te-IN';
+
+            // 1. Try Exact Match (Lang + Region)
+            let selected = voices.find(v => v.lang === targetLang);
+
+            // 2. Try just Lang (e.g., 'hi')
+            if (!selected) {
+                selected = voices.find(v => v.lang.startsWith(langCode));
+            }
+
+            // 3. Fallback: Indian English for everything else (better than US/UK for Sahayak)
+            if (!selected) {
+                selected = voices.find(v => v.lang === 'en-IN' || v.name.includes('India'));
+            }
+
+            if (selected) {
+                console.log(`Voice Selected for ${langCode}: ${selected.name} (${selected.lang})`);
+                utterance.voice = selected;
+                utterance.lang = selected.lang; // Set utterance lang based on selected voice
+                // Adjust rate/pitch for specific voices if needed
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+            } else {
+                console.warn(`No voice found for ${langCode}. Using default.`);
+                // Fallback to a generic English voice if no specific voice is found
+                const defaultEnglishVoice = voices.find(v => v.lang.startsWith('en'));
+                if (defaultEnglishVoice) {
+                    utterance.voice = defaultEnglishVoice;
+                    utterance.lang = defaultEnglishVoice.lang;
+                }
+            }
+        }
+
         sentences.forEach((sentence, index) => {
             const utterance = new SpeechSynthesisUtterance(sentence.trim());
-            const { voice, lang } = getBestVoice(sentence);
 
-            if (voice) utterance.voice = voice;
-            utterance.lang = lang; // Critical for correct phonemes
+            let detectedLangCode = 'en'; // Default to English
+            if (isBengali(sentence)) {
+                detectedLangCode = 'bn';
+            } else if (isDevanagari(sentence)) {
+                detectedLangCode = 'hi'; // Assuming Hindi for Devanagari script
+            }
 
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
+            selectVoice(utterance, detectedLangCode);
 
             if (index < sentences.length - 1) {
                 utterance.onend = () => { new Promise(r => setTimeout(r, 200)); };
@@ -861,159 +1044,193 @@ function checkForChart(text, container) {
             }
         });
     }
-}
 
-async function downloadPDF(title, content) {
-    try {
-        const response = await fetch('/download/pdf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, content })
+    // --- TOOL RENDERING ---
+    // Video Search Handler (New Rich Gallery)
+    if (tool === 'youtube_search') {
+        const results = Array.isArray(content) ? content : [{ title: "Search", link: `https://youtube.com/results?search_query=${content}`, thumbnail: "" }];
+
+        let galleryHTML = `<div class="video-gallery" style="display: flex; gap: 10px; overflow-x: auto; padding: 10px 0;">`;
+
+        results.forEach(vid => {
+            // Provide fallback if structure is weak
+            const thumb = vid.thumbnail || "https://img.youtube.com/vi/default.jpg";
+            const title = vid.title || "Educational Video";
+            const link = vid.link || "#";
+            const channel = vid.channel || "YouTube";
+
+            galleryHTML += `
+            <div class="video-card" onclick="window.open('${link}', '_blank')" style="min-width: 200px; cursor: pointer; border: 1px solid #eee; border-radius: 8px; overflow: hidden; background: white; transition: transform 0.2s;">
+                <div style="position: relative;">
+                    <img src="${thumb}" style="width: 100%; height: 120px; object-fit: cover;">
+                    <div style="position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.7); color: white; padding: 2px 5px; font-size: 0.7rem; border-radius: 4px;">${vid.duration || 'VIDEO'}</div>
+                </div>
+                <div style="padding: 10px;">
+                    <div style="font-weight: 600; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${title}</div>
+                    <div style="color: #666; font-size: 0.8rem;">${channel}</div>
+                </div>
+            </div>`;
         });
+        galleryHTML += `</div>`;
 
-        if (response.ok) {
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = "Lesson_Plan.pdf";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-    } catch (error) {
-        console.error("PDF Download Error", error);
+        // Add to DOM
+        addMessage(galleryHTML, 'ai', true, agentName);
+        return; // Skip default render
     }
-}
 
-// Presentation Mode Logic
-let currentSlideIndex = 0;
-let slides = [];
-let presentationOverlay = null;
+    if (tool === 'document') {
 
-function startPresentation(text) {
-    // 1. Parse text into slides
-    const rawSlides = text.split("[SLIDE]").filter(s => s.trim().length > 0);
-    slides = rawSlides.map(s => marked.parse(s));
+        async function downloadPDF(title, content) {
+            try {
+                const response = await fetch('/download/pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, content })
+                });
 
-    if (slides.length === 0) return;
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "Lesson_Plan.pdf";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
+            } catch (error) {
+                console.error("PDF Download Error", error);
+            }
+        }
 
-    currentSlideIndex = 0;
+        // Presentation Mode Logic
+        let currentSlideIndex = 0;
+        let slides = [];
+        let presentationOverlay = null;
 
-    // 2. Create Overlay
-    presentationOverlay = document.createElement('div');
-    presentationOverlay.style.cssText = `
+        function startPresentation(text) {
+            // 1. Parse text into slides
+            const rawSlides = text.split("[SLIDE]").filter(s => s.trim().length > 0);
+            slides = rawSlides.map(s => marked.parse(s));
+
+            if (slides.length === 0) return;
+
+            currentSlideIndex = 0;
+
+            // 2. Create Overlay
+            presentationOverlay = document.createElement('div');
+            presentationOverlay.style.cssText = `
         position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
         background: #0f172a; z-index: 9999; display: flex; flex-direction: column;
         justify-content: center; align-items: center; color: white;
     `;
 
-    // Slide Container
-    const slideContent = document.createElement('div');
-    slideContent.id = 'slide-content';
-    slideContent.style.cssText = `
+            // Slide Container
+            const slideContent = document.createElement('div');
+            slideContent.id = 'slide-content';
+            slideContent.style.cssText = `
         width: 80%; height: 70%; background: white; color: #1e293b;
         border-radius: 20px; padding: 40px; font-size: 2rem; overflow-y: auto;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
         text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
     `;
 
-    // Controls
-    const controls = document.createElement('div');
-    controls.style.cssText = "margin-top: 20px; display: flex; gap: 20px;";
+            // Controls
+            const controls = document.createElement('div');
+            controls.style.cssText = "margin-top: 20px; display: flex; gap: 20px;";
 
-    const prevBtn = document.createElement('button');
-    prevBtn.innerHTML = '<i class="fa-solid fa-backward"></i>';
-    prevBtn.onclick = () => showSlide(currentSlideIndex - 1);
+            const prevBtn = document.createElement('button');
+            prevBtn.innerHTML = '<i class="fa-solid fa-backward"></i>';
+            prevBtn.onclick = () => showSlide(currentSlideIndex - 1);
 
-    const nextBtn = document.createElement('button');
-    nextBtn.innerHTML = '<i class="fa-solid fa-forward"></i>';
-    // User requested auto-play, but manual is safer MVP. 
-    // We can add auto-play logic:
+            const nextBtn = document.createElement('button');
+            nextBtn.innerHTML = '<i class="fa-solid fa-forward"></i>';
+            // User requested auto-play, but manual is safer MVP. 
+            // We can add auto-play logic:
 
-    nextBtn.onclick = () => showSlide(currentSlideIndex + 1);
+            nextBtn.onclick = () => showSlide(currentSlideIndex + 1);
 
-    const closeBtn = document.createElement('button');
-    closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Close';
-    closeBtn.onclick = () => {
-        document.body.removeChild(presentationOverlay);
-        presentationOverlay = null;
-    };
+            const closeBtn = document.createElement('button');
+            closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Close';
+            closeBtn.onclick = () => {
+                document.body.removeChild(presentationOverlay);
+                presentationOverlay = null;
+            };
 
-    [prevBtn, nextBtn, closeBtn].forEach(btn => {
-        btn.style.cssText = "padding: 10px 20px; font-size: 1.2rem; border-radius: 10px; cursor: pointer; border: none;";
-    });
+            [prevBtn, nextBtn, closeBtn].forEach(btn => {
+                btn.style.cssText = "padding: 10px 20px; font-size: 1.2rem; border-radius: 10px; cursor: pointer; border: none;";
+            });
 
-    controls.appendChild(prevBtn);
-    controls.appendChild(nextBtn);
-    controls.appendChild(closeBtn);
+            controls.appendChild(prevBtn);
+            controls.appendChild(nextBtn);
+            controls.appendChild(closeBtn);
 
-    presentationOverlay.appendChild(slideContent);
-    presentationOverlay.appendChild(controls);
-    document.body.appendChild(presentationOverlay);
+            presentationOverlay.appendChild(slideContent);
+            presentationOverlay.appendChild(controls);
+            document.body.appendChild(presentationOverlay);
 
-    showSlide(0);
+            showSlide(0);
 
-    // Auto-advance feature (User Request)
-    // "Automatically move to next slide after 10 seconds"
-    let autoPlayInterval = setInterval(() => {
-        if (!presentationOverlay) {
-            clearInterval(autoPlayInterval);
-            return;
+            // Auto-advance feature (User Request)
+            // "Automatically move to next slide after 10 seconds"
+            let autoPlayInterval = setInterval(() => {
+                if (!presentationOverlay) {
+                    clearInterval(autoPlayInterval);
+                    return;
+                }
+                if (currentSlideIndex < slides.length - 1) {
+                    showSlide(currentSlideIndex + 1);
+                } else {
+                    clearInterval(autoPlayInterval);
+                }
+            }, 10000); // 10 seconds
         }
-        if (currentSlideIndex < slides.length - 1) {
-            showSlide(currentSlideIndex + 1);
-        } else {
-            clearInterval(autoPlayInterval);
+
+        function showSlide(index) {
+            if (index < 0 || index >= slides.length) return;
+            currentSlideIndex = index;
+            const container = document.getElementById('slide-content');
+            if (container) {
+                container.innerHTML = slides[currentSlideIndex];
+                // Re-run Mermaid if slide has it
+                if (slides[currentSlideIndex].includes('mermaid')) {
+                    setTimeout(() => {
+                        const mermaidBlocks = container.querySelectorAll('.language-mermaid');
+                        mermaidBlocks.forEach(block => {
+                            const graphDefinition = block.textContent;
+                            const pre = block.parentElement;
+                            const div = document.createElement('div');
+                            div.className = 'mermaid';
+                            div.textContent = graphDefinition;
+                            pre.replaceWith(div);
+                        });
+                        mermaid.run({ nodes: container.querySelectorAll('.mermaid') });
+                    }, 50);
+                }
+            }
         }
-    }, 10000); // 10 seconds
-}
 
-function showSlide(index) {
-    if (index < 0 || index >= slides.length) return;
-    currentSlideIndex = index;
-    const container = document.getElementById('slide-content');
-    if (container) {
-        container.innerHTML = slides[currentSlideIndex];
-        // Re-run Mermaid if slide has it
-        if (slides[currentSlideIndex].includes('mermaid')) {
-            setTimeout(() => {
-                const mermaidBlocks = container.querySelectorAll('.language-mermaid');
-                mermaidBlocks.forEach(block => {
-                    const graphDefinition = block.textContent;
-                    const pre = block.parentElement;
-                    const div = document.createElement('div');
-                    div.className = 'mermaid';
-                    div.textContent = graphDefinition;
-                    pre.replaceWith(div);
-                });
-                mermaid.run({ nodes: container.querySelectorAll('.mermaid') });
-            }, 50);
+        // 3. Floating Emojis Logic
+        function floatEmojis(text) {
+            const keywords = {
+                'star': '⭐', 'space': '🚀', 'planet': '🪐', 'earth': '🌍',
+                'idea': '💡', 'think': '🤔', 'love': '❤️', 'happy': '😊',
+                'question': '❓', 'game': '🎮', 'music': '🎵', 'fire': '🔥'
+            };
+
+            // Check keywords
+            const lowerText = text.toLowerCase();
+            Object.keys(keywords).forEach(key => {
+                if (lowerText.includes(key)) {
+                    createFloatingEmoji(keywords[key]);
+                }
+            });
         }
-    }
-}
 
-// 3. Floating Emojis Logic
-function floatEmojis(text) {
-    const keywords = {
-        'star': '⭐', 'space': '🚀', 'planet': '🪐', 'earth': '🌍',
-        'idea': '💡', 'think': '🤔', 'love': '❤️', 'happy': '😊',
-        'question': '❓', 'game': '🎮', 'music': '🎵', 'fire': '🔥'
-    };
-
-    // Check keywords
-    const lowerText = text.toLowerCase();
-    Object.keys(keywords).forEach(key => {
-        if (lowerText.includes(key)) {
-            createFloatingEmoji(keywords[key]);
-        }
-    });
-}
-
-function createFloatingEmoji(emojiChar) {
-    const emoji = document.createElement('div');
-    emoji.textContent = emojiChar;
-    emoji.style.cssText = `
+        function createFloatingEmoji(emojiChar) {
+            const emoji = document.createElement('div');
+            emoji.textContent = emojiChar;
+            emoji.style.cssText = `
         position: fixed;
         font-size: 2rem;
         pointer-events: none;
@@ -1022,291 +1239,334 @@ function createFloatingEmoji(emojiChar) {
         bottom: -50px;
         left: ${Math.random() * 90}vw;
     `;
-    document.body.appendChild(emoji);
+            document.body.appendChild(emoji);
 
-    // Add keyframes if not present
-    if (!document.getElementById('float-style')) {
-        const style = document.createElement('style');
-        style.id = 'float-style';
-        style.textContent = `
+            // Add keyframes if not present
+            if (!document.getElementById('float-style')) {
+                const style = document.createElement('style');
+                style.id = 'float-style';
+                style.textContent = `
             @keyframes floatUp {
                 0% { transform: translateY(0) rotate(0deg); opacity: 1; }
                 100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
             }
         `;
-        document.head.appendChild(style);
-    }
+                document.head.appendChild(style);
+            }
 
-    // Cleanup
-    setTimeout(() => {
-        if (document.body.contains(emoji)) {
-            document.body.removeChild(emoji);
-        }
-    }, 4000);
-}
-
-// 4. Interactive Quiz Logic
-function renderQuiz(text, container) {
-    const quizRegex = /\[QUIZ\]([\s\S]*?)\[END QUIZ\]/g;
-    let match;
-
-    while ((match = quizRegex.exec(text)) !== null) {
-        const quizContent = match[1];
-        const lines = quizContent.split('\n').filter(l => l.trim());
-
-        const quizBox = document.createElement('div');
-        quizBox.className = 'quiz-container';
-        quizBox.style.cssText = "background: #f0fdf4; padding: 15px; border-radius: 12px; margin-top: 15px; border: 1px solid #bbf7d0;";
-
-        let question = "";
-        let options = [];
-        let correct = "";
-        let reason = "";
-
-        lines.forEach(line => {
-            if (line.startsWith("Question:")) question = line.replace("Question:", "").trim();
-            else if (line.match(/^[A-D]\)/)) options.push(line.trim());
-            else if (line.startsWith("Correct:")) correct = line.replace("Correct:", "").trim();
-            else if (line.startsWith("Reason:")) reason = line.replace("Reason:", "").trim();
-        });
-
-        const qTitle = document.createElement('h4');
-        qTitle.textContent = "🧠 Quick Quiz: " + question;
-        qTitle.style.marginBottom = "10px";
-        quizBox.appendChild(qTitle);
-
-        const feedbackDiv = document.createElement('div');
-        feedbackDiv.style.marginTop = "10px";
-        feedbackDiv.style.fontWeight = "bold";
-
-        options.forEach(opt => {
-            const btn = document.createElement('button');
-            btn.textContent = opt;
-            btn.style.cssText = "display: block; width: 100%; margin: 5px 0; padding: 8px; text-align: left; border: 1px solid #ccc; border-radius: 6px; background: white; cursor: pointer;";
-
-            btn.onclick = () => {
-                const letter = opt.charAt(0);
-                if (letter === correct) {
-                    btn.style.background = "#dcfce7"; // Green
-                    btn.style.borderColor = "#22c55e";
-                    feedbackDiv.textContent = "✅ Correct! " + reason;
-                    feedbackDiv.style.color = "#15803d";
-                    createFloatingEmoji('🎉');
-                } else {
-                    btn.style.background = "#fee2e2"; // Red
-                    btn.style.borderColor = "#ef4444";
-                    feedbackDiv.textContent = "❌ Try again!";
-                    feedbackDiv.style.color = "#b91c1c";
+            // Cleanup
+            setTimeout(() => {
+                if (document.body.contains(emoji)) {
+                    document.body.removeChild(emoji);
                 }
-            };
-            quizBox.appendChild(btn);
-        });
+            }, 4000);
+        }
 
-        quizBox.appendChild(feedbackDiv);
-        container.appendChild(quizBox);
+        // 4. Interactive Quiz Logic
+        function renderQuiz(text, container) {
+            const quizRegex = /\[QUIZ\]([\s\S]*?)\[END QUIZ\]/g;
+            let match;
+
+            while ((match = quizRegex.exec(text)) !== null) {
+                const quizContent = match[1];
+                const lines = quizContent.split('\n').filter(l => l.trim());
+
+                const quizBox = document.createElement('div');
+                quizBox.className = 'quiz-container';
+                quizBox.style.cssText = "background: #f0fdf4; padding: 15px; border-radius: 12px; margin-top: 15px; border: 1px solid #bbf7d0;";
+
+                let question = "";
+                let options = [];
+                let correct = "";
+                let reason = "";
+
+                lines.forEach(line => {
+                    if (line.startsWith("Question:")) question = line.replace("Question:", "").trim();
+                    else if (line.match(/^[A-D]\)/)) options.push(line.trim());
+                    else if (line.startsWith("Correct:")) correct = line.replace("Correct:", "").trim();
+                    else if (line.startsWith("Reason:")) reason = line.replace("Reason:", "").trim();
+                });
+
+                const qTitle = document.createElement('h4');
+                qTitle.textContent = "🧠 Quick Quiz: " + question;
+                qTitle.style.marginBottom = "10px";
+                quizBox.appendChild(qTitle);
+
+                const feedbackDiv = document.createElement('div');
+                feedbackDiv.style.marginTop = "10px";
+                feedbackDiv.style.fontWeight = "bold";
+
+                options.forEach(opt => {
+                    const btn = document.createElement('button');
+                    btn.textContent = opt;
+                    btn.style.cssText = "display: block; width: 100%; margin: 5px 0; padding: 8px; text-align: left; border: 1px solid #ccc; border-radius: 6px; background: white; cursor: pointer;";
+
+                    btn.onclick = () => {
+                        const letter = opt.charAt(0);
+                        if (letter === correct) {
+                            btn.style.background = "#dcfce7"; // Green
+                            btn.style.borderColor = "#22c55e";
+                            feedbackDiv.textContent = "✅ Correct! " + reason;
+                            feedbackDiv.style.color = "#15803d";
+                            createFloatingEmoji('🎉');
+                        } else {
+                            btn.style.background = "#fee2e2"; // Red
+                            btn.style.borderColor = "#ef4444";
+                            feedbackDiv.textContent = "❌ Try again!";
+                            feedbackDiv.style.color = "#b91c1c";
+                        }
+                    };
+                    quizBox.appendChild(btn);
+                });
+
+                quizBox.appendChild(feedbackDiv);
+                container.appendChild(quizBox);
+            }
+        }
+
+        // 5. Audio Visualizer Logic
+        let audioContext, analyser, dataArray, canvasCtx, visualizerCanvas;
+
+        function setupVisualizer() {
+            visualizerCanvas = document.getElementById('audio-visualizer');
+            canvasCtx = visualizerCanvas.getContext('2d');
+
+            // Resize canvas
+            visualizerCanvas.width = window.innerWidth;
+            visualizerCanvas.height = 100;
+
+            if (!navigator.mediaDevices) return;
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    const source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+                    analyser.fftSize = 256;
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+                    drawVisualizer();
+                })
+                .catch(err => console.error("Mic Error for Visualizer", err));
+        }
+
+        function drawVisualizer() {
+            if (!visualizerCanvas || !analyser) return;
+
+            // Only draw if Live Mode is active or mic is recording
+            const isLive = document.getElementById('live-mode-toggle') && document.getElementById('live-mode-toggle').checked;
+            const isRec = document.getElementById('mic-btn') && document.getElementById('mic-btn').classList.contains('recording');
+
+            if (isLive || isRec) {
+                visualizerCanvas.style.display = 'block';
+            } else {
+                visualizerCanvas.style.display = 'none';
+                requestAnimationFrame(drawVisualizer);
+                return;
+            }
+
+            requestAnimationFrame(drawVisualizer);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+
+            const barWidth = (visualizerCanvas.width / dataArray.length) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for (let i = 0; i < dataArray.length; i++) {
+                barHeight = dataArray[i] / 2;
+
+                // Dynamic Color: Pink/Purple
+                canvasCtx.fillStyle = `rgba(219, 39, 119, ${barHeight / 100})`;
+                canvasCtx.fillRect(x, visualizerCanvas.height - barHeight, barWidth, barHeight);
+
+                x += barWidth + 1;
+            }
+        }
+
+        // 9. History Implementation (Real API)
+        async function fetchHistoryList() {
+            try {
+                const response = await fetch('/history');
+                const data = await response.json();
+                const listDiv = document.getElementById('history-list');
+                if (!listDiv) return;
+
+                listDiv.innerHTML = ''; // Clear
+
+                data.sessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = 'history-item';
+                    item.textContent = session.summary || session.id;
+                    item.onclick = () => loadHistory(session.id);
+                    listDiv.appendChild(item);
+                });
+            } catch (e) {
+                console.error("Failed to load history list", e);
+            }
+        }
+
+        // Load List on Start
+        window.addEventListener('load', fetchHistoryList);
+
+        window.loadHistory = async function (sessionId) {
+            const chatContainer = document.getElementById('chat-container');
+            chatContainer.innerHTML = '';
+
+            addMessage(`Loading session...`, 'user');
+            const loadingId = addLoadingIndicator();
+
+            try {
+                const response = await fetch(`/history/${sessionId}`);
+                const data = await response.json();
+
+                removeMessage(loadingId);
+                chatContainer.innerHTML = ''; // Clear loading msg
+
+                data.history.forEach(msg => {
+                    // Rehydrate message
+                    const isHTML = true; // Assume history stored as raw content
+                    const sender = msg.role === 'user' ? 'user' : 'ai';
+                    addMessage(msg.content, sender, isHTML);
+                });
+
+                addMessage("Session restored.", 'ai');
+
+            } catch (e) {
+                removeMessage(loadingId);
+                addMessage("Error loading session history.", 'ai');
+                console.error(e);
+            }
+        };
+
+        // Initialize Visualizer on first click
+        document.body.addEventListener('click', () => {
+            if (!audioContext) setupVisualizer();
+        }, { once: true });
+
+        // Intro Avatar Customization
+        const editAvatarBtn = document.getElementById('edit-avatar-btn');
+        if (editAvatarBtn) {
+            editAvatarBtn.addEventListener('click', () => {
+                const currentPrompt = "cute 3d cartoon indian students and teacher learning together happy vibrant colors"; // default
+                const newPrompt = prompt("Customize your Intro Avatar!\nDescribe the scene (e.g., 'Futuristic classroom with robot teacher'):", "");
+
+                if (newPrompt && newPrompt.trim() !== "") {
+                    const encodedPrompt = encodeURIComponent(newPrompt);
+                    const newUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=400&height=400&nologo=true`;
+
+                    const mascot = document.getElementById('intro-mascot');
+                    mascot.src = newUrl;
+
+                    // Save for future visits
+                    localStorage.setItem('intro_avatar_prompt', newPrompt);
+                }
+            });
+
+            // Load saved intro avatar
+            const savedIntro = localStorage.getItem('intro_avatar_prompt');
+            if (savedIntro) {
+                const mascot = document.getElementById('intro-mascot');
+                const encodedPrompt = encodeURIComponent(savedIntro);
+                mascot.src = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=400&height=400&nologo=true`;
+            }
+            // End of Intro Avatar Logic
+
+            // 4. Download Handler
+            async function downloadMedia(type, title) {
+                const endpoint = `/download/${type.toLowerCase()}`;
+                const btn = event.target.closest('button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating...`;
+                btn.disabled = true;
+
+                try {
+                    // We pass title and "Context" (Content). For now, we will pass a generic content
+                    // In a real app, we'd pass the full chat context or specific lesson content.
+                    // We can grab the last AI message text as content? 
+                    // Let's use a placeholder request for now as the Backend generates content based on Title in this POC logic 
+                    // (See backend: generate_pdf uses title + content). 
+                    // Actually backend logic takes `content`. We should send something.
+
+                    const content = "Generated Lesson PlanContent based on: " + title + ". (Full content would be here)";
+                    const slides = [{ title: title, content: "Generated Content" }];
+
+                    const body = type === 'PPT' ? { title, slides } : { title, content };
+
+                    const res = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (!res.ok) throw new Error("Generation Failed");
+
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${title}.${type === 'PPT' ? 'pptx' : (type === 'VIDEO' ? 'mp4' : 'pdf')}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    btn.innerHTML = `<i class="fa-solid fa-check"></i> Done`;
+                } catch (err) {
+                    console.error(err);
+                    btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error`;
+                } finally {
+                    setTimeout(() => {
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    }, 3000);
+                }
+            }
+        }
     }
 }
 
-// 5. Audio Visualizer Logic
-let audioContext, analyser, dataArray, canvasCtx, visualizerCanvas;
+function floatEmojis(text) {
+    const emojiMap = {
+        'love': '❤️', 'heart': '❤️', 'like': '👍', 'good': '👍', 'great': '🌟',
+        'sad': '😢', 'bad': '👎', 'happy': '😊', 'joy': '😂', 'angry': '😡',
+        'think': '🤔', 'idea': '💡', 'celebrate': '🎉', 'party': '🥳',
+        'star': '⭐', 'fire': '🔥', 'cool': '😎', 'wow': '😲', 'rocket': '🚀'
+    };
 
-function setupVisualizer() {
-    visualizerCanvas = document.getElementById('audio-visualizer');
-    canvasCtx = visualizerCanvas.getContext('2d');
-
-    // Resize canvas
-    visualizerCanvas.width = window.innerWidth;
-    visualizerCanvas.height = 100;
-
-    if (!navigator.mediaDevices) return;
-
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            const source = audioContext.createMediaStreamSource(stream);
-            source.connect(analyser);
-            analyser.fftSize = 256;
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-            drawVisualizer();
-        })
-        .catch(err => console.error("Mic Error for Visualizer", err));
-}
-
-function drawVisualizer() {
-    if (!visualizerCanvas || !analyser) return;
-
-    // Only draw if Live Mode is active or mic is recording
-    const isLive = document.getElementById('live-mode-toggle') && document.getElementById('live-mode-toggle').checked;
-    const isRec = document.getElementById('mic-btn') && document.getElementById('mic-btn').classList.contains('recording');
-
-    if (isLive || isRec) {
-        visualizerCanvas.style.display = 'block';
-    } else {
-        visualizerCanvas.style.display = 'none';
-        requestAnimationFrame(drawVisualizer);
-        return;
-    }
-
-    requestAnimationFrame(drawVisualizer);
-
-    analyser.getByteFrequencyData(dataArray);
-
-    canvasCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
-
-    const barWidth = (visualizerCanvas.width / dataArray.length) * 2.5;
-    let barHeight;
-    let x = 0;
-
-    for (let i = 0; i < dataArray.length; i++) {
-        barHeight = dataArray[i] / 2;
-
-        // Dynamic Color: Pink/Purple
-        canvasCtx.fillStyle = `rgba(219, 39, 119, ${barHeight / 100})`;
-        canvasCtx.fillRect(x, visualizerCanvas.height - barHeight, barWidth, barHeight);
-
-        x += barWidth + 1;
-    }
-}
-
-// 9. History Implementation (Real API)
-async function fetchHistoryList() {
-    try {
-        const response = await fetch('/history');
-        const data = await response.json();
-        const listDiv = document.getElementById('history-list');
-        if (!listDiv) return;
-
-        listDiv.innerHTML = ''; // Clear
-
-        data.sessions.forEach(session => {
-            const item = document.createElement('div');
-            item.className = 'history-item';
-            item.textContent = session.summary || session.id;
-            item.onclick = () => loadHistory(session.id);
-            listDiv.appendChild(item);
-        });
-    } catch (e) {
-        console.error("Failed to load history list", e);
-    }
-}
-
-// Load List on Start
-window.addEventListener('load', fetchHistoryList);
-
-window.loadHistory = async function (sessionId) {
-    const chatContainer = document.getElementById('chat-container');
-    chatContainer.innerHTML = '';
-
-    addMessage(`Loading session...`, 'user');
-    const loadingId = addLoadingIndicator();
-
-    try {
-        const response = await fetch(`/history/${sessionId}`);
-        const data = await response.json();
-
-        removeMessage(loadingId);
-        chatContainer.innerHTML = ''; // Clear loading msg
-
-        data.history.forEach(msg => {
-            // Rehydrate message
-            const isHTML = true; // Assume history stored as raw content
-            const sender = msg.role === 'user' ? 'user' : 'ai';
-            addMessage(msg.content, sender, isHTML);
-        });
-
-        addMessage("Session restored.", 'ai');
-
-    } catch (e) {
-        removeMessage(loadingId);
-        addMessage("Error loading session history.", 'ai');
-        console.error(e);
-    }
-};
-
-// Initialize Visualizer on first click
-document.body.addEventListener('click', () => {
-    if (!audioContext) setupVisualizer();
-}, { once: true });
-
-// Intro Avatar Customization
-const editAvatarBtn = document.getElementById('edit-avatar-btn');
-if (editAvatarBtn) {
-    editAvatarBtn.addEventListener('click', () => {
-        const currentPrompt = "cute 3d cartoon indian students and teacher learning together happy vibrant colors"; // default
-        const newPrompt = prompt("Customize your Intro Avatar!\nDescribe the scene (e.g., 'Futuristic classroom with robot teacher'):", "");
-
-        if (newPrompt && newPrompt.trim() !== "") {
-            const encodedPrompt = encodeURIComponent(newPrompt);
-            const newUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=400&height=400&nologo=true`;
-
-            const mascot = document.getElementById('intro-mascot');
-            mascot.src = newUrl;
-
-            // Save for future visits
-            localStorage.setItem('intro_avatar_prompt', newPrompt);
+    let emojis = [];
+    Object.keys(emojiMap).forEach(key => {
+        if (text.toLowerCase().includes(key)) {
+            emojis.push(emojiMap[key]);
         }
     });
 
-    // Load saved intro avatar
-    const savedIntro = localStorage.getItem('intro_avatar_prompt');
-    if (savedIntro) {
-        const mascot = document.getElementById('intro-mascot');
-        const encodedPrompt = encodeURIComponent(savedIntro);
-        mascot.src = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=400&height=400&nologo=true`;
-    }
-    // End of Intro Avatar Logic
+    if (emojis.length > 0) {
+        // Unique emojis only
+        emojis = [...new Set(emojis)];
+        emojis.forEach(emoji => {
+            const el = document.createElement('div');
+            el.innerText = emoji;
+            el.style.position = 'fixed';
+            el.style.left = Math.random() * 80 + 10 + 'vw';
+            el.style.bottom = '-50px';
+            el.style.fontSize = Math.random() * 20 + 20 + 'px';
+            el.style.transition = 'all 3s ease-out';
+            el.style.zIndex = '1000';
+            document.body.appendChild(el);
 
-    // 4. Download Handler
-    async function downloadMedia(type, title) {
-        const endpoint = `/download/${type.toLowerCase()}`;
-        const btn = event.target.closest('button');
-        const originalText = btn.innerHTML;
-        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Generating...`;
-        btn.disabled = true;
-
-        try {
-            // We pass title and "Context" (Content). For now, we will pass a generic content
-            // In a real app, we'd pass the full chat context or specific lesson content.
-            // We can grab the last AI message text as content? 
-            // Let's use a placeholder request for now as the Backend generates content based on Title in this POC logic 
-            // (See backend: generate_pdf uses title + content). 
-            // Actually backend logic takes `content`. We should send something.
-
-            const content = "Generated Lesson PlanContent based on: " + title + ". (Full content would be here)";
-            const slides = [{ title: title, content: "Generated Content" }];
-
-            const body = type === 'PPT' ? { title, slides } : { title, content };
-
-            const res = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
-            });
-
-            if (!res.ok) throw new Error("Generation Failed");
-
-            const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${title}.${type === 'PPT' ? 'pptx' : (type === 'VIDEO' ? 'mp4' : 'pdf')}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-
-            btn.innerHTML = `<i class="fa-solid fa-check"></i> Done`;
-        } catch (err) {
-            console.error(err);
-            btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error`;
-        } finally {
             setTimeout(() => {
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                el.style.bottom = '100vh';
+                el.style.opacity = '0';
+            }, 100);
+
+            setTimeout(() => {
+                document.body.removeChild(el);
             }, 3000);
-        }
+        });
     }
 }
 // End of file
