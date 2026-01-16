@@ -605,8 +605,19 @@ async function sendMessage(textOverride) {
         // Render
         const msgDiv = addMessage(displayHTML, 'ai', true, agentName);
 
+        // Re-render Mermaid diagrams after dynamic injection
+        if (tool === 'mermaid') {
+            try {
+                mermaid.run({ nodes: msgDiv.querySelectorAll('.mermaid') });
+                console.log("Mermaid diagram rendered successfully.");
+            } catch (e) {
+                console.error("Mermaid rendering error:", e);
+            }
+        }
+
         // Speak
         if (tool === 'text') speakText(content);
+        if (tool === 'mermaid') speakText(`I have created a diagram for ${metadata.topic || 'the topic'}.`);
         if (tool === 'document') speakText(`I have prepared a document on ${metadata.topic || 'the topic'}.`);
 
     } catch (error) {
