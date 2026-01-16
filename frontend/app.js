@@ -516,6 +516,24 @@ async function sendMessage(textOverride) {
             }
         }
 
+        // SECONDARY CHECK: Strip any raw JSON blocks that leaked into text responses
+        // This catches cases where LLM adds JSON at the end of a text response
+        if (tool === 'text' && typeof content === 'string') {
+            // Check for JSON-like pattern at end of content
+            const jsonPattern = /\{\s*"tool_used"\s*:\s*"[^"]+"\s*,\s*"data"\s*:\s*[^}]+\}/g;
+            if (jsonPattern.test(content)) {
+                console.log("Stripping leaked JSON from text response...");
+                content = content.replace(jsonPattern, '').trim();
+            }
+
+            // Also check for single-quoted JSON (LLM sometimes uses single quotes)
+            const singleQuotePattern = /\{\s*'tool_used'\s*:\s*'[^']+'\s*,\s*'data'\s*:\s*[^}]+\}/g;
+            if (singleQuotePattern.test(content)) {
+                console.log("Stripping single-quoted JSON from text response...");
+                content = content.replace(singleQuotePattern, '').trim();
+            }
+        }
+
         const agentName = (metadata.audience_level === 'teacher') ? 'Pedagogy' : 'Sahayak';
         let displayHTML = "";
 
